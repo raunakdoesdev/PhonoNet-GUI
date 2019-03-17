@@ -92,32 +92,16 @@ class Program:
                     chunk = torch.cat((chunk, padding), 3)
                 if(out is None):
                    out = model.fc1(model(chunk.contiguous()))
-                   print(out.shape)
                 else:
                    out += model.fc1(model(chunk.contiguous()))
 
+        print(out)
         confidences = torch.nn.functional.softmax(out, dim=1).numpy()[0]*100
         print(confidences)
+        self.line1.remove()
+        self.line1 = self.ax.bar(ragas, confidences)
+        self.canvas.draw()
 
-        fig = Figure(figsize=(5,7,), dpi=100)
-        ax = fig.add_subplot(111)
-        ax.bar(ragas, confidences)
-        ax.set_ylim(0, 100)
-        ax.set_ylabel('Prediction Confidence (%)', fontsize=14)
-        ax.set_xlabel('\nRaga', fontsize=14)
-        ax.set_title('Prediction Confidence vs. Raga', fontsize=14)
-        for tick in ax.get_xticklabels():
-            tick.set_rotation(90)
-            tick.set_fontsize(12)
-        fig.tight_layout()
-
-        canvas = FigureCanvasTkAgg(fig, master=self.root)
-        canvas.draw()
-        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-
-        toolbar = NavigationToolbar2Tk(canvas, self.root)
-        toolbar.update()
-        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     
     def youtubeDialog(self):
         self.w = popupWindow(self.root)
@@ -158,6 +142,25 @@ class Program:
         self.new_item.add_command(label='New Audio File', command=self.fileDialog)
         self.new_item.add_command(label='New Youtube Song', command=self.youtubeDialog)
         self.menu.add_cascade(label='File', menu=self.new_item)
+        self.fig = Figure(figsize=(5,7,), dpi=100)
+        self.ax = self.fig.add_subplot(111)
+        self.line1 = self.ax.bar(ragas, [0] * len(ragas))
+        self.ax.set_ylim(0, 100)
+        self.ax.set_ylabel('Prediction Confidence (%)', fontsize=14)
+        self.ax.set_xlabel('\nRaga', fontsize=14)
+        self.ax.set_title('Prediction Confidence vs. Raga', fontsize=14)
+        for tick in self.ax.get_xticklabels():
+            tick.set_rotation(90)
+            tick.set_fontsize(12)
+        self.fig.tight_layout()
+
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self.root)
+        self.toolbar.update()
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
         self.root.config(menu=self.menu)
         self.root.mainloop()
