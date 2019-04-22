@@ -192,6 +192,9 @@ class Program:
           print(x_start)
           print(x_start + x_size)
 
+        import subprocess
+        subprocess.Popen([ "vlc" , file_name, "--start-time", str(max_x_start * 92.87981859 / 1000.), "--stop-time", str((max_x_start + x_size) * 92.87981859 / 1000.), '--loop'])
+
         plt.subplot(2, 1, 1)
         librosa.display.specshow((vsong[:, max_x_start : max_x_start + x_size]), x_axis='time', hop_length=2048, sr=sr, cmap=get_cmap('magma'), y_axis='chroma')
         plt.colorbar()
@@ -204,6 +207,7 @@ class Program:
         plt.title('PhonoViz Generated Chromagram')
         plt.tight_layout()
         plt.show()
+
     
     def youtubeDialog(self):
         self.w = popupWindow(self.root)
