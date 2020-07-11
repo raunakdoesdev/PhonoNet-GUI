@@ -1,6 +1,8 @@
 import torch.nn as nn
 import torch
 from collections import OrderedDict
+from matplotlib.cm import get_cmap
+
 
 class LSTM(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_layers=2):
@@ -12,11 +14,13 @@ class LSTM(nn.Module):
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers=num_layers)
         self.dropout = nn.Dropout(p=0.1)
         self.hidden = self.init_hidden()
+
     def init_hidden(self):
         return (torch.zeros(self.num_layers, 1, self.hidden_dim),
                 torch.zeros(self.num_layers, 1, self.hidden_dim))
+
     def forward(self, x):
-        x =self.dropout(x)
+        x = self.dropout(x)
         lstm_out, self.hidden = self.lstm(x)
         return lstm_out
 
@@ -69,88 +73,39 @@ class RagaDetector(nn.Module):
         # x = self.fc1(x)
         return x
 
-    def summary(self, input_size):
-       	def register_hook(module):
-            def hook(module, input, output):
-                if module._modules:  # only want base layers
-                    return
-                class_name = str(module.__class__).split('.')[-1].split("'")[0]
-                module_idx = len(summary)
-                m_key = '%s-%i' % (class_name, module_idx + 1)
-                summary[m_key] = OrderedDict()
-                summary[m_key]['input_shape'] = list(input[0].size())
-                summary[m_key]['input_shape'][0] = None
-                if output.__class__.__name__ == 'tuple':
-                    summary[m_key]['output_shape'] = list(output[0].size())
-                else:
-                    summary[m_key]['output_shape'] = list(output.size())
-                summary[m_key]['output_shape'][0] = None
 
-                params = 0
-                # iterate through parameters and count num params
-                for name, p in module._parameters.items():
-                    params += torch.numel(p.data)
-                    summary[m_key]['trainable'] = p.requires_grad
+class SalientRagaDetector(nn.Module):
+    def __init__(self, raga_detector):  # Create new broken down raga detector based on existing model
+        super(SalientRagaDetector, self).__init__()
+        self.encoder1 = nn.Sequential(raga_detector.encoder[0:6])
+        self.encoder2 = nn.Sequential(raga_detector.encoder[6:11])
+        self.encoder3 = nn.Sequential(raga_detector.encoder[11:16])
+        self.encoder4 = nn.Sequential(raga_detector.encoder[16:20])
+        self.fc1 = raga_detector.fc1
 
-                summary[m_key]['nb_params'] = params
+    def forward(self, x):
+        out0 = x.mean(1).unsqueeze(0)
 
-            if not isinstance(module, torch.nn.Sequential) and \
-               not isinstance(module, torch.nn.ModuleList) and \
-               not (module == self):
-                hooks.append(module.register_forward_hook(hook))
+        self.up1 = nn.Upsample([x.shape[2], x.shape[3]], mode='nearest')
+        x = self.encoder1(x)
+        out1 = x.mean(1).unsqueeze(0)
 
-        # check if there are multiple inputs to the network
-        if isinstance(input_size[0], (list, tuple)):
-            x = [(torch.rand(1, *in_size)) for in_size in input_size]
-        else:
-            x = (torch.randn(1, *input_size))
+        self.up2 = nn.Upsample([x.shape[2], x.shape[3]], mode='nearest')
+        x = self.encoder2(x)
+        out2 = x.mean(1).unsqueeze(0)
 
-        # create properties
-        summary = OrderedDict()
-        hooks = []
-        # register hook
-        self.apply(register_hook)
-        # make a forward pass
-        self(x)
-        # remove these hooks
-        for h in hooks:
-            h.remove()
+        self.up3 = nn.Upsample([x.shape[2], x.shape[3]], mode='nearest')
+        x = self.encoder3(x)
+        out3 = x.mean(1).unsqueeze(0)
 
-        # print out neatly
-        def get_names(module, name, acc):
-            if not module._modules:
-                acc.append(name)
-            else:
-                for key in module._modules.keys():
-                    p_name = key if name == "" else name + "." + key
-                    get_names(module._modules[key], p_name, acc)
-        names = []
-        get_names(self, "", names)
+        self.up4 = nn.Upsample([x.shape[2], x.shape[3]], mode='nearest')
+        x = self.encoder4(x)
+        out4 = x.mean(1).unsqueeze(0)
 
-        col_width = 25  # should be >= 12
-        summary_width = 61
+        batch_size = x.shape[0]
+        x = x.view(batch_size, -1)
 
-        def crop(s):
-            return s[:col_width] if len(s) > col_width else s
+        # Magical line that scales everything and does the mathsss
+        activation_map = torch.mul(self.up1(torch.mul(self.up2(torch.mul(self.up3(out3), out2)), out1)), out0)
 
-        print('_' * summary_width)
-        print('{0: <{3}} {1: <{3}} {2: <{3}}'.format(
-            'Layer (type)', 'Output Shape', 'Param #', col_width))
-        print('=' * summary_width)
-        total_params = 0
-        trainable_params = 0
-        for (i, l_type), l_name in zip(enumerate(summary), names):
-            d = summary[l_type]
-            total_params += d['nb_params']
-            if 'trainable' in d and d['trainable']:
-                trainable_params += d['nb_params']
-            print('{0: <{3}} {1: <{3}} {2: <{3}}'.format(
-                crop(l_name + ' (' + l_type[:-2] + ')'), crop(str(d['output_shape'])),
-                crop(str(d['nb_params'])), col_width))
-            if i < len(summary) - 1:
-                print('_' * summary_width)
-        print('=' * summary_width)
-        print('Total params: ' + str(total_params))
-        print('Trainable params: ' + str(trainable_params))
-        print('Non-trainable params: ' + str((total_params - trainable_params)))
-        print('_' * summary_width)
+        return x, activation_map
